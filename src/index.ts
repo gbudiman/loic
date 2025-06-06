@@ -24,6 +24,7 @@ type TRequestResult = {
 interface Env {
 	service_token: string;
 	loic_token: string;
+	basic_auth?: string;
 }
 
 const commonParams = ({ url }: { url: URL }) => ({
@@ -79,6 +80,7 @@ const executeAsChild = async({ url, env, token }: { url: URL, env: Env, token: s
 				"X-Worker-ID": String(workerId),
 				"X-Sequence-ID": sequenceId,
 				"X-LOIC-Service-Token": env.loic_token,
+				"Authorization": env.basic_auth ? `Basic ${env.basic_auth}` : ''
 			}
 		}).then(async res => {
 			const result = await res.json()
