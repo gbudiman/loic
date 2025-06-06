@@ -38,6 +38,7 @@ const commonParams = ({ url }: { url: URL }) => ({
 
 const executeAsParent = async({ url, token }: { url: URL, token: string }) => {
 	const { fanoutCount, requestsPerWorker, sequenceId, selfUrl, targetUrl } = commonParams({ url })
+	console.log('as parent')
 	const launches = Array.from({ length: fanoutCount}, (_, i) =>
 		fetch(
 			`${selfUrl}?mode=child&requests_per_worker=${requestsPerWorker}&token=${token}&worker_id=${i}&sequence_id=${sequenceId}&target_url=${targetUrl}`, 
@@ -69,6 +70,7 @@ const executeAsParent = async({ url, token }: { url: URL, token: string }) => {
 
 const executeAsChild = async({ url, env, token }: { url: URL, env: Env, token: string }) => {
 	const { workerId, requestsPerWorker, sequenceId, targetUrl } = commonParams({ url })
+	console.log('as child')
 	const launches = Array.from({ length: requestsPerWorker }, (_, i) => {
 		const startsAt = performance.now()
 
