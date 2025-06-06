@@ -41,7 +41,7 @@ const executeAsParent = async({ url, token }: { url: URL, token: string }) => {
 	console.log('as parent')
 	const launches = Array.from({ length: fanoutCount}, (_, i) =>
 		fetch(
-			`${selfUrl}?mode=child&requests_per_worker=${requestsPerWorker}&token=${token}&worker_id=${i}&sequence_id=${sequenceId}&target_url=${targetUrl}`, 
+			`${selfUrl}?mode=child&requests_per_worker=${requestsPerWorker}&worker_id=${i}&sequence_id=${sequenceId}&target_url=${targetUrl}`, 
 			{ 
 				method: 'POST',
 				headers: {
@@ -55,8 +55,6 @@ const executeAsParent = async({ url, token }: { url: URL, token: string }) => {
 				workerId: i,
 				workerResult
 			}
-		}).catch(err => {
-			console.log(err)
 		})
 	)
 
