@@ -28,7 +28,6 @@ interface Env {
 }
 
 const commonParams = ({ url }: { url: URL }) => ({
-	token: url.searchParams.get('token'),
 	sequenceId: url.searchParams.get('sequence_id') ?? crypto.randomUUID(),
 	workerId: Number(url.searchParams.get('worker_id')),
 	requestsPerWorker: parseInt(url.searchParams.get('requests_per_worker') ?? '2'),
@@ -36,12 +35,17 @@ const commonParams = ({ url }: { url: URL }) => ({
 	selfUrl: url.origin + url.pathname,
 })
 
-const executeAsParent = async({ url }: { url: URL }) => {
-	const { fanoutCount, requestsPerWorker, token, sequenceId, selfUrl } = commonParams({ url })
+const executeAsParent = async({ url, token }: { url: URL, token: string }) => {
+	const { fanoutCount, requestsPerWorker, sequenceId, selfUrl } = commonParams({ url })
 	const launches = Array.from({ length: fanoutCount}, (_, i) =>
 		fetch(
 			`${selfUrl}?mode=child&requests_per_worker=${requestsPerWorker}&token=${token}&worker_id=${i}&sequence_id=${sequenceId}`, 
-			{ method: 'POST' }
+			{ 
+				method: 'POST',
+				headers: {
+					"X-Service-Token": token
+				}
+			}
 		).then(async res => {
 			const workerResult: { requestResults: TRequestResult[] } = await res.json()
 
@@ -62,7 +66,7 @@ const executeAsParent = async({ url }: { url: URL }) => {
 	}))
 }
 
-const executeAsChild = async({ url, env }: { url: URL, env: Env }) => {
+const executeAsChild = async({ url, env, token }: { url: URL, env: Env, token: string }) => {
 	const { workerId, requestsPerWorker, sequenceId } = commonParams({ url })
 	const launches = Array.from({ length: requestsPerWorker }, (_, i) => {
 		const startsAt = performance.now()
@@ -110,7 +114,7 @@ const executeAsChild = async({ url, env }: { url: URL, env: Env }) => {
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
 		const url = new URL(request.url)
-		const token = url.searchParams.get('token')
+		const token = request.headers.get('X-Service-Token')
 		const mode = url.searchParams.get('mode')
 		
 		if (token !== env.service_token) {
@@ -119,6 +123,6 @@ export default {
 			}))
 		}
 
-		return (mode === 'child') ? executeAsChild({url, env}) : executeAsParent({ url })
+		return (mode === 'child') ? executeAsChild({url, token, env}) : executeAsParent({ url, token})
 	},
 } satisfies ExportedHandler<Env>;
