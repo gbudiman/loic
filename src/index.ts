@@ -22,12 +22,12 @@ type TRequestResult = {
 }
 
 interface Env {
-	target_url: string;
 	service_token: string;
 	loic_token: string;
 }
 
 const commonParams = ({ url }: { url: URL }) => ({
+	targetUrl: url.searchParams.get('target_url') ?? '',
 	sequenceId: url.searchParams.get('sequence_id') ?? crypto.randomUUID(),
 	workerId: Number(url.searchParams.get('worker_id')),
 	requestsPerWorker: parseInt(url.searchParams.get('requests_per_worker') ?? '2'),
@@ -36,10 +36,10 @@ const commonParams = ({ url }: { url: URL }) => ({
 })
 
 const executeAsParent = async({ url, token }: { url: URL, token: string }) => {
-	const { fanoutCount, requestsPerWorker, sequenceId, selfUrl } = commonParams({ url })
+	const { fanoutCount, requestsPerWorker, sequenceId, selfUrl, targetUrl } = commonParams({ url })
 	const launches = Array.from({ length: fanoutCount}, (_, i) =>
 		fetch(
-			`${selfUrl}?mode=child&requests_per_worker=${requestsPerWorker}&token=${token}&worker_id=${i}&sequence_id=${sequenceId}`, 
+			`${selfUrl}?mode=child&requests_per_worker=${requestsPerWorker}&token=${token}&worker_id=${i}&sequence_id=${sequenceId}&target_url=${targetUrl}`, 
 			{ 
 				method: 'POST',
 				headers: {
@@ -67,11 +67,11 @@ const executeAsParent = async({ url, token }: { url: URL, token: string }) => {
 }
 
 const executeAsChild = async({ url, env, token }: { url: URL, env: Env, token: string }) => {
-	const { workerId, requestsPerWorker, sequenceId } = commonParams({ url })
+	const { workerId, requestsPerWorker, sequenceId, targetUrl } = commonParams({ url })
 	const launches = Array.from({ length: requestsPerWorker }, (_, i) => {
 		const startsAt = performance.now()
 
-		return fetch(env.target_url, {
+		return fetch(targetUrl, {
 			method: 'POST',
 			headers: {
 				"Content-Type": "application/json",
