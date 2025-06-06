@@ -55,6 +55,8 @@ const executeAsParent = async({ url, token }: { url: URL, token: string }) => {
 				workerId: i,
 				workerResult
 			}
+		}).catch(err => {
+			console.log(err)
 		})
 	)
 
