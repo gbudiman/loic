@@ -25,6 +25,8 @@ interface Env {
 	service_token: string;
 	loic_token: string;
 	basic_auth?: string;
+	bypass_key?: string;
+	bypass_value?: string;
 }
 
 const commonParams = ({ url }: { url: URL }) => ({
@@ -36,13 +38,12 @@ const commonParams = ({ url }: { url: URL }) => ({
 	selfUrl: url.origin + url.pathname,
 })
 
-const executeAsParent = async({ url, token }: { url: URL, token: string }) => {
+const executeAsParent = async ({ url, token }: { url: URL, token: string }) => {
 	const { fanoutCount, requestsPerWorker, sequenceId, selfUrl, targetUrl } = commonParams({ url })
-	console.log('as parent')
-	const launches = Array.from({ length: fanoutCount}, (_, i) =>
+	const launches = Array.from({ length: fanoutCount }, (_, i) =>
 		fetch(
-			`${selfUrl}?mode=child&requests_per_worker=${requestsPerWorker}&worker_id=${i}&sequence_id=${sequenceId}&target_url=${targetUrl}`, 
-			{ 
+			`${selfUrl}?mode=child&requests_per_worker=${requestsPerWorker}&worker_id=${i}&sequence_id=${sequenceId}&target_url=${targetUrl}`,
+			{
 				method: 'POST',
 				headers: {
 					"X-Service-Token": token
@@ -68,9 +69,8 @@ const executeAsParent = async({ url, token }: { url: URL, token: string }) => {
 	}))
 }
 
-const executeAsChild = async({ url, env, token }: { url: URL, env: Env, token: string }) => {
+const executeAsChild = async ({ url, env, token }: { url: URL, env: Env, token: string }) => {
 	const { workerId, requestsPerWorker, sequenceId, targetUrl } = commonParams({ url })
-	console.log('as child')
 	const launches = Array.from({ length: requestsPerWorker }, (_, i) => {
 		const startsAt = performance.now()
 
@@ -82,7 +82,8 @@ const executeAsChild = async({ url, env, token }: { url: URL, env: Env, token: s
 				"X-Worker-ID": String(workerId),
 				"X-Sequence-ID": sequenceId,
 				"X-LOIC-Service-Token": env.loic_token,
-				"Authorization": env.basic_auth ? `Basic ${env.basic_auth}` : ''
+				"Authorization": env.basic_auth ? `Basic ${env.basic_auth}` : '',
+				...(env.bypass_key ? { [env.bypass_key]: env.bypass_value } : {})
 			}
 		}).then(async res => {
 			const result = await res.json()
@@ -94,7 +95,8 @@ const executeAsChild = async({ url, env, token }: { url: URL, env: Env, token: s
 				sequenceId: sequenceId,
 				successful: res.ok,
 				status: res.status,
-				result: result
+				result: result,
+				completedAt: performance.now()
 			} as TRequestResult
 		}).catch(err => {
 			return {
@@ -104,7 +106,8 @@ const executeAsChild = async({ url, env, token }: { url: URL, env: Env, token: s
 				sequenceId: sequenceId,
 				successful: false,
 				status: err.status,
-				result: err.message
+				result: err.message,
+				completedAt: performance.now()
 			} as TRequestResult
 		})
 	})
@@ -120,13 +123,13 @@ export default {
 		const url = new URL(request.url)
 		const token = request.headers.get('X-Service-Token')
 		const mode = url.searchParams.get('mode')
-		
+
 		if (token !== env.service_token) {
 			return new Response(JSON.stringify({
 				error: 'Service Token Required'
 			}))
 		}
 
-		return (mode === 'child') ? executeAsChild({url, token, env}) : executeAsParent({ url, token})
+		return (mode === 'child') ? executeAsChild({ url, token, env }) : executeAsParent({ url, token })
 	},
 } satisfies ExportedHandler<Env>;
