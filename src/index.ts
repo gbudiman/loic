@@ -13,6 +13,8 @@
 
 type TRequestResult = {
 	startsAt: number;
+	completedAt: number;
+	durationMs: number;
 	workerId: number;
 	requestId: number;
 	sequenceId: string;
@@ -33,8 +35,8 @@ const commonParams = ({ url }: { url: URL }) => ({
 	targetUrl: url.searchParams.get('target_url') ?? '',
 	sequenceId: url.searchParams.get('sequence_id') ?? crypto.randomUUID(),
 	workerId: Number(url.searchParams.get('worker_id')),
-	requestsPerWorker: parseInt(url.searchParams.get('requests_per_worker') ?? '2'),
-	fanoutCount: parseInt(url.searchParams.get('fanout') ?? '2'),
+	requestsPerWorker: Math.min(100, parseInt(url.searchParams.get('requests_per_worker') ?? '2')),
+	fanoutCount: Math.min(100, parseInt(url.searchParams.get('fanout') ?? '2')),
 	selfUrl: url.origin + url.pathname,
 })
 
@@ -60,11 +62,18 @@ const executeAsParent = async ({ url, token }: { url: URL, token: string }) => {
 	)
 
 	const sessionResults = await Promise.all(launches)
-	const flattenedResults = sessionResults.map(worker => worker.workerResult.requestResults).flat()
+	const flattenedResults = sessionResults.flatMap(worker => worker.workerResult.requestResults)
+	const minStartTime = Math.min(...flattenedResults.map(r => r.startsAt))
+
 	return new Response(JSON.stringify({
 		requestsSucceeded: flattenedResults.filter(r => r.successful).length,
 		requestsFailed: flattenedResults.filter(r => !r.successful).length,
 		totalRequests: flattenedResults.length,
+		minRequestDelay: Math.min(...flattenedResults.map(x => x.startsAt - minStartTime)),
+		maxRequestDelay: Math.max(...flattenedResults.map(x => x.startsAt - minStartTime)),
+		minExecutionTime: Math.min(...flattenedResults.map(x => x.durationMs)),
+		maxExecutionTime: Math.max(...flattenedResults.map(x => x.durationMs)),
+		avgExecutionTime: flattenedResults.reduce((sum, x) => sum + x.durationMs, 0) / flattenedResults.length,
 		flattenedResults: flattenedResults.sort((a, b) => a.startsAt - b.startsAt),
 	}))
 }
@@ -87,6 +96,7 @@ const executeAsChild = async ({ url, env, token }: { url: URL, env: Env, token: 
 			}
 		}).then(async res => {
 			const result = await res.json()
+			const completedAt = performance.now()
 
 			return {
 				startsAt,
@@ -96,9 +106,12 @@ const executeAsChild = async ({ url, env, token }: { url: URL, env: Env, token: 
 				successful: res.ok,
 				status: res.status,
 				result: result,
-				completedAt: performance.now()
+				completedAt,
+				durationMs: completedAt - startsAt
 			} as TRequestResult
 		}).catch(err => {
+			const completedAt = performance.now()
+
 			return {
 				startsAt,
 				workerId: workerId,
@@ -107,7 +120,8 @@ const executeAsChild = async ({ url, env, token }: { url: URL, env: Env, token: 
 				successful: false,
 				status: err.status,
 				result: err.message,
-				completedAt: performance.now()
+				completedAt,
+				durationMs: completedAt - startsAt
 			} as TRequestResult
 		})
 	})
