@@ -7,9 +7,7 @@
 	"name": "loic",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-06-06",
-	"compatibility_flags": [
-    "global_fetch_strictly_public"
-  ],
+	"compatibility_flags": ["global_fetch_strictly_public"],
 	"observability": {
 		"enabled": true
 	}
