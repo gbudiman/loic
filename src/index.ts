@@ -11,39 +11,8 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
+import type { Env, TRequestResult, TSessionResult } from "../types";
 import commonParams from "./utils/commonParams";
-
-export type TRequestResult = {
-	startsAt: number;
-	completedAt: number;
-	durationMs: number;
-	workerId: string;
-	requestId: number;
-	sequenceId: string;
-	successful: boolean;
-	status: number;
-	result: unknown;
-};
-
-export type TSessionResult = {
-	requestsSucceeded: number;
-	requestsFailed: number;
-	totalRequests: number;
-	minRequestDelay: number;
-	maxRequestDelay: number;
-	minExecutionTime: number;
-	maxExecutionTime: number;
-	avgExecutionTime: number;
-	flattenedResults: TRequestResult[];
-};
-
-interface Env {
-	service_token: string;
-	loic_token: string;
-	basic_auth?: string;
-	bypass_key?: string;
-	bypass_value?: string;
-}
 
 const executeAsParent = async ({ url, token }: { url: URL; token: string }) => {
 	const { fanoutCount, requestsPerWorker, sequenceId, selfUrl, targetUrl } =

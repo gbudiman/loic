@@ -3,7 +3,8 @@ import {
 	waitOnExecutionContext,
 } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import worker, { type TRequestResult, type TSessionResult } from "../src/index";
+import worker from "../src/index";
+import type { TRequestResult, TSessionResult } from "../types";
 
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 const testEnv = {
