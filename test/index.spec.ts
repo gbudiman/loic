@@ -15,15 +15,91 @@ const testEnv = {
 	bypass_value: "bypass-value",
 };
 
+beforeEach(() => {
+	vi.stubGlobal("fetch", vi.fn());
+});
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
+
+describe("Authentication", () => {
+	it("should return error when X-Service-Token header is missing", async () => {
+		const request = new IncomingRequest("http://example.com");
+		const ctx = createExecutionContext();
+
+		const response = await worker.fetch(request, testEnv, ctx);
+		await waitOnExecutionContext(ctx);
+
+		const result = await response.json();
+		expect(result).toEqual({
+			error: "Service Token Required",
+		});
+	});
+
+	it("should return error when X-Service-Token header is incorrect", async () => {
+		const request = new IncomingRequest("http://example.com");
+		request.headers.set("X-Service-Token", "wrong-token");
+		const ctx = createExecutionContext();
+
+		const response = await worker.fetch(request, testEnv, ctx);
+		await waitOnExecutionContext(ctx);
+
+		const result = await response.json();
+		expect(result).toEqual({
+			error: "Service Token Required",
+		});
+	});
+
+	it("should call executeAsParent when mode is not 'child'", async () => {
+		vi.mocked(fetch).mockResolvedValue({
+			json: () => Promise.resolve({ requestResults: [] }),
+			ok: true,
+		} as Response);
+
+		const request = new IncomingRequest(
+			"http://example.com?target_url=http://target.com",
+		);
+		request.headers.set("X-Service-Token", "test-token");
+		const ctx = createExecutionContext();
+
+		const response = await worker.fetch(request, testEnv, ctx);
+		await waitOnExecutionContext(ctx);
+
+		const result = await response.json();
+
+		// Should have parent response structure
+		expect(result).toHaveProperty("requestsSucceeded");
+		expect(result).toHaveProperty("requestsFailed");
+		expect(result).toHaveProperty("totalRequests");
+		expect(result).toHaveProperty("flattenedResults");
+	});
+
+	it("should call executeAsChild when mode is 'child'", async () => {
+		vi.mocked(fetch).mockResolvedValue({
+			json: () => Promise.resolve({ success: true }),
+			ok: true,
+			status: 200,
+		} as Response);
+
+		const request = new IncomingRequest(
+			"http://example.com?mode=child&target_url=http://target.com&worker_id=0&requests_per_worker=1&sequence_id=test-seq",
+		);
+		request.headers.set("X-Service-Token", "test-token");
+		const ctx = createExecutionContext();
+
+		const response = await worker.fetch(request, testEnv, ctx);
+		await waitOnExecutionContext(ctx);
+
+		const result = await response.json();
+
+		// Should have child response structure
+		expect(result).toHaveProperty("requestResults");
+		expect(result).not.toHaveProperty("requestsSucceeded");
+	});
+});
+
 describe("executeAsParent", () => {
-	beforeEach(() => {
-		vi.stubGlobal("fetch", vi.fn());
-	});
-
-	afterEach(() => {
-		vi.restoreAllMocks();
-	});
-
 	it("should orchestrate fanout requests and aggregate results", async () => {
 		const mockChildResponse = {
 			requestResults: [
@@ -175,14 +251,6 @@ describe("executeAsParent", () => {
 });
 
 describe("executeAsChild", () => {
-	beforeEach(() => {
-		vi.stubGlobal("fetch", vi.fn());
-	});
-
-	afterEach(() => {
-		vi.restoreAllMocks();
-	});
-
 	it("should make requests to target URL and return results", async () => {
 		vi.mocked(fetch).mockResolvedValue({
 			json: () => Promise.resolve({ success: true }),
