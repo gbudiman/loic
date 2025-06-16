@@ -11,16 +11,30 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-type TRequestResult = {
+import commonParams from "./utils/commonParams";
+
+export type TRequestResult = {
 	startsAt: number;
 	completedAt: number;
 	durationMs: number;
-	workerId: number;
+	workerId: string;
 	requestId: number;
 	sequenceId: string;
 	successful: boolean;
 	status: number;
 	result: unknown;
+}
+
+export type TSessionResult = {
+	requestsSucceeded: number;
+	requestsFailed: number;
+	totalRequests: number;
+	minRequestDelay: number;
+	maxRequestDelay: number;
+	minExecutionTime: number;
+	maxExecutionTime: number;
+	avgExecutionTime: number;
+	flattenedResults: TRequestResult[];
 }
 
 interface Env {
@@ -31,27 +45,22 @@ interface Env {
 	bypass_value?: string;
 }
 
-const commonParams = ({ url }: { url: URL }) => ({
-	targetUrl: url.searchParams.get('target_url') ?? '',
-	sequenceId: url.searchParams.get('sequence_id') ?? crypto.randomUUID(),
-	workerId: Number(url.searchParams.get('worker_id')),
-	requestsPerWorker: Math.min(100, parseInt(url.searchParams.get('requests_per_worker') ?? '2')),
-	fanoutCount: Math.min(100, parseInt(url.searchParams.get('fanout') ?? '2')),
-	selfUrl: url.origin + url.pathname,
-})
-
 const executeAsParent = async ({ url, token }: { url: URL, token: string }) => {
 	const { fanoutCount, requestsPerWorker, sequenceId, selfUrl, targetUrl } = commonParams({ url })
-	const launches = Array.from({ length: fanoutCount }, (_, i) =>
-		fetch(
-			`${selfUrl}?mode=child&requests_per_worker=${requestsPerWorker}&worker_id=${i}&sequence_id=${sequenceId}&target_url=${targetUrl}`,
-			{
-				method: 'POST',
-				headers: {
-					"X-Service-Token": token
-				}
+	const launches = Array.from({ length: fanoutCount }, (_, i) => {
+		const childUrl = new URL(selfUrl)
+		childUrl.searchParams.set('mode', 'child')
+		childUrl.searchParams.set('requests_per_worker', requestsPerWorker.toString())
+		childUrl.searchParams.set('worker_id', i.toString())
+		childUrl.searchParams.set('sequence_id', sequenceId)
+		childUrl.searchParams.set('target_url', targetUrl)
+
+		return fetch(childUrl.toString(), {
+			method: 'POST',
+			headers: {
+				"X-Service-Token": token
 			}
-		).then(async res => {
+		}).then(async res => {
 			const workerResult: { requestResults: TRequestResult[] } = await res.json()
 
 			return {
@@ -59,7 +68,7 @@ const executeAsParent = async ({ url, token }: { url: URL, token: string }) => {
 				workerResult
 			}
 		})
-	)
+	})
 
 	const sessionResults = await Promise.all(launches)
 	const flattenedResults = sessionResults.flatMap(worker => worker.workerResult.requestResults)
@@ -75,7 +84,7 @@ const executeAsParent = async ({ url, token }: { url: URL, token: string }) => {
 		maxExecutionTime: Math.max(...flattenedResults.map(x => x.durationMs)),
 		avgExecutionTime: flattenedResults.reduce((sum, x) => sum + x.durationMs, 0) / flattenedResults.length,
 		flattenedResults: flattenedResults.sort((a, b) => a.startsAt - b.startsAt),
-	}))
+	} as TSessionResult))
 }
 
 const executeAsChild = async ({ url, env, token }: { url: URL, env: Env, token: string }) => {
